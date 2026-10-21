@@ -41,6 +41,16 @@ public enum HooksJSON {
         }
     }
 
+    /// The commands of every Speek2Me handler in the file, so the app can check they still exist.
+    public static func installedCommands(_ data: Data?) throws -> [String] {
+        let hooks = try object(data)["hooks"] as? [String: Any] ?? [:]
+        return hooks.values.flatMap { event -> [String] in
+            (event as? [[String: Any]] ?? []).flatMap { group -> [String] in
+                (group["hooks"] as? [[String: Any]] ?? []).filter(isMarked).compactMap { $0["command"] as? String }
+            }
+        }
+    }
+
     /// Appends one handler per group. A group whose event already has a Speek2Me handler is left
     /// alone, so running this twice changes nothing.
     public static func install(_ data: Data?, groups: [Group]) throws -> Data {

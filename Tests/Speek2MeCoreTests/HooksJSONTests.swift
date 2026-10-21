@@ -35,6 +35,8 @@ struct HooksJSONTests {
         #expect((notification[1]["hooks"] as? [[String: Any]])?.first?["command"] as? String == command)
         #expect(try HooksJSON.isInstalled(out))
         #expect(try !HooksJSON.isInstalled(cmuxSettings))
+        #expect(try HooksJSON.installedCommands(out) == [command, command])
+        #expect(try HooksJSON.installedCommands(cmuxSettings).isEmpty)
     }
 
     @Test func installIsIdempotent() throws {
