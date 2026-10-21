@@ -21,6 +21,8 @@ public struct FallbackSpeaker: Speaker {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                // A cancelled network request surfaces as URLError; a stopped announcement must stay stopped.
+                if Task.isCancelled || (error as? URLError)?.code == .cancelled { throw CancellationError() }
                 onFallback((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
             }
         }

@@ -57,8 +57,9 @@ final class AnnouncementController: ObservableObject {
     func drain() {
         guard let queue else { return }
         let events = (try? inbox.drain()) ?? []
-        for event in events {
-            Task { await queue.enqueue(event) }
+        // One task keeps the drained order; one task per event would race the actor hops.
+        Task {
+            for event in events { await queue.enqueue(event) }
         }
     }
 
@@ -84,6 +85,7 @@ final class AnnouncementController: ObservableObject {
     }
 
     func speakSample(_ text: String) async {
+        lastFailure = nil
         lastAnnouncement = text
         await say(text, earcon: .done)
     }
@@ -106,6 +108,7 @@ final class AnnouncementController: ObservableObject {
 
     private func handle(_ event: SessionEvent) async {
         lastEvent = event
+        lastFailure = nil
         if settings.muted { return }
         if event.kind == .needsYou, event.reason == .idle, !settings.speakIdle { return }
 
@@ -127,6 +130,8 @@ final class AnnouncementController: ObservableObject {
                 )
             }
             if let failure = outcome.failure { lastFailure = failure }
+            // Stop pressed while condensing: the raw fallback must not be spoken either.
+            if Task.isCancelled { return }
             text = Announcer.text(for: event, condensed: outcome.text)
         } else {
             text = Announcer.text(for: event, condensed: "")
@@ -138,6 +143,10 @@ final class AnnouncementController: ObservableObject {
     }
 
     private func say(_ text: String, earcon: Earcon, speech: Bool = true, needsYou: Bool = false) async {
+        // Replay or a voice test while something is playing: the newer announcement wins.
+        earconPlayback.stop()
+        playback.stop()
+        await apple.stop()
         phase = needsYou ? .needsYou : .speaking
         defer { phase = .idle }
         if settings.earcons, let data = try? Data(contentsOf: earcon.fileURL) {
@@ -170,7 +179,7 @@ final class AnnouncementController: ObservableObject {
     }
 
     private func speaker() -> any Speaker {
-        let hasKey = !(KeychainStore.read(.elevenLabs) ?? "").isEmpty
+        let hasKey = settings.useElevenLabs && !(KeychainStore.read(.elevenLabs) ?? "").isEmpty
         let voiceID = settings.voiceID
         let modelID = settings.modelID
         let primary: (any Speaker)? = hasKey

@@ -37,6 +37,8 @@ public struct ElevenLabsSpeaker: Speaker {
             (data, response) = try await session.data(for: request)
         } catch let error as URLError where error.code == .timedOut {
             throw SpeakerError.timedOut
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
         }
         let audio = try ElevenLabsClient.parseSpeechResponse(data: data, status: (response as? HTTPURLResponse)?.statusCode ?? 0)
         try await playback.play(audio)

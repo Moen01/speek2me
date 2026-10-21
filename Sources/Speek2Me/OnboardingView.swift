@@ -221,7 +221,6 @@ private struct VoiceStep: View {
     @ObservedObject var controller: AnnouncementController
     @ObservedObject var setup: SetupStatus
 
-    @State private var useElevenLabs = KeychainStore.read(.elevenLabs) != nil
     @State private var keyDraft = ""
     @State private var result: (ok: Bool, text: String)?
     @State private var busy = false
@@ -232,7 +231,7 @@ private struct VoiceStep: View {
         VStack(alignment: .leading, spacing: 22) {
             StepHeader(symbol: "speaker.wave.2", title: "Pick a voice",
                        subtitle: "ElevenLabs sounds best and needs an API key. The Apple voice is built in and always the fallback.")
-            Picker("", selection: $useElevenLabs) {
+            Picker("", selection: $settings.useElevenLabs) {
                 Text("ElevenLabs").tag(true)
                 Text("Apple voice only").tag(false)
             }
@@ -242,7 +241,7 @@ private struct VoiceStep: View {
 
             Card {
                 VStack(alignment: .leading, spacing: 10) {
-                    if useElevenLabs {
+                    if settings.useElevenLabs {
                         HStack {
                             SecureField(setup.elevenLabsKeySaved ? "Saved in your Keychain" : "Paste your ElevenLabs API key", text: $keyDraft)
                                 .textFieldStyle(.roundedBorder)
@@ -257,7 +256,15 @@ private struct VoiceStep: View {
                             .disabled(keyDraft.isEmpty)
                         }
                         if setup.elevenLabsKeySaved {
-                            Label("Key saved in your Keychain", systemImage: "key.fill").foregroundStyle(.green)
+                            HStack {
+                                Label("Key saved in your Keychain", systemImage: "key.fill").foregroundStyle(.green)
+                                Button("Remove key", role: .destructive) {
+                                    KeychainStore.delete(.elevenLabs)
+                                    setup.elevenLabsKeySaved = false
+                                    setup.elevenLabsVerified = nil
+                                }
+                                .controlSize(.small)
+                            }
                         }
                         HStack(spacing: 4) {
                             Text("Each announcement is billed to your key.")
@@ -293,19 +300,12 @@ private struct VoiceStep: View {
                     .lineLimit(3)
             }
         }
-        .onChange(of: useElevenLabs) { _, on in
-            if !on, setup.elevenLabsKeySaved {
-                KeychainStore.delete(.elevenLabs)
-                setup.elevenLabsKeySaved = false
-                setup.elevenLabsVerified = nil
-            }
-        }
     }
 
     private func test() async {
         busy = true
         defer { busy = false }
-        if useElevenLabs, let key = KeychainStore.read(.elevenLabs) {
+        if settings.useElevenLabs, let key = KeychainStore.read(.elevenLabs) {
             do {
                 try await ElevenLabsClient.verify(apiKey: key)
                 setup.elevenLabsVerified = true
@@ -317,7 +317,7 @@ private struct VoiceStep: View {
         }
         await controller.speakSample("Hi, this is Speek2Me. I will tell you when a session finishes, or needs you.")
         result = controller.lastFailure.map { (false, $0) }
-            ?? (true, setup.elevenLabsKeySaved ? "Spoken with ElevenLabs." : "Spoken with the Apple voice.")
+            ?? (true, setup.elevenLabsKeySaved && settings.useElevenLabs ? "Spoken with ElevenLabs." : "Spoken with the Apple voice.")
     }
 }
 
@@ -635,19 +635,24 @@ private struct TryItStep: View {
         let payload = """
         {"hook_event_name":"Stop","session_id":"setup-guide","cwd":"\(cwd)","last_assistant_message":"All done. I fixed the failing test and the suite is green, 67 passing. Nothing else is needed from you."}
         """
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = ["claude"]
-        let stdin = Pipe()
-        process.standardInput = stdin
-        do {
-            try process.run()
-            stdin.fileHandleForWriting.write(Data(payload.utf8))
-            try? stdin.fileHandleForWriting.close()
-            process.waitUntilExit()
-            sent = true
-        } catch {
-            self.error = "Could not run \(path): \(error.localizedDescription)"
+        sent = true
+        // Off the main actor: the hook is quick, but a broken command must not freeze the window.
+        Task.detached {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: path)
+            process.arguments = ["claude"]
+            let stdin = Pipe()
+            process.standardInput = stdin
+            do {
+                try process.run()
+                // write(contentsOf:) throws on a closed pipe instead of raising an exception.
+                try? stdin.fileHandleForWriting.write(contentsOf: Data(payload.utf8))
+                try? stdin.fileHandleForWriting.close()
+                process.waitUntilExit()
+            } catch {
+                let text = "Could not run \(path): \(error.localizedDescription)"
+                await MainActor.run { self.error = text }
+            }
         }
     }
 }

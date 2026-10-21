@@ -13,6 +13,7 @@ final class AppSettings: ObservableObject {
         static let extraInstructions = "extraInstructions"
         static let readFull = "readFullMessage"
         static let maxSentences = "maxSentences"
+        static let useElevenLabs = "useElevenLabs"
         static let voiceID = "elevenLabsVoiceID"
         static let modelID = "elevenLabsModelID"
         static let appleVoiceID = "appleVoiceID"
@@ -40,6 +41,8 @@ final class AppSettings: ObservableObject {
     /// Speak the whole final message (trimmed of markup) instead of a condensed version.
     @Published var readFull: Bool { didSet { defaults.set(readFull, forKey: Key.readFull) } }
     @Published var maxSentences: Int { didSet { defaults.set(maxSentences, forKey: Key.maxSentences) } }
+    /// Off keeps a saved key but speaks with the Apple voice only.
+    @Published var useElevenLabs: Bool { didSet { defaults.set(useElevenLabs, forKey: Key.useElevenLabs) } }
     @Published var voiceID: String { didSet { defaults.set(voiceID, forKey: Key.voiceID) } }
     @Published var modelID: String { didSet { defaults.set(modelID, forKey: Key.modelID) } }
     @Published var appleVoiceID: String { didSet { defaults.set(appleVoiceID, forKey: Key.appleVoiceID) } }
@@ -64,6 +67,7 @@ final class AppSettings: ObservableObject {
         extraInstructions = defaults.string(forKey: Key.extraInstructions) ?? ""
         readFull = defaults.object(forKey: Key.readFull) as? Bool ?? false
         maxSentences = defaults.object(forKey: Key.maxSentences) as? Int ?? 3
+        useElevenLabs = defaults.object(forKey: Key.useElevenLabs) as? Bool ?? true
         voiceID = defaults.string(forKey: Key.voiceID) ?? ElevenLabsClient.defaultVoiceID
         modelID = defaults.string(forKey: Key.modelID) ?? ElevenLabsClient.defaultModelID
         appleVoiceID = defaults.string(forKey: Key.appleVoiceID) ?? ""

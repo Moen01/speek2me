@@ -166,13 +166,18 @@ public struct ClaudeCodeCondenser: Condenser {
                     }
                 }
                 do {
+                    // Cancelled before launch: do not start a process nobody will wait for.
+                    if Task.isCancelled { throw CancellationError() }
                     try process.run()
                     // Throws instead of crashing when claude exits before reading (SIGPIPE is ignored at launch).
                     try? stdinPipe.fileHandleForWriting.write(contentsOf: Data(input.utf8))
                     try? stdinPipe.fileHandleForWriting.close()
                 } catch {
                     process.terminationHandler = nil
-                    continuation.resume(throwing: CondenserError.claudeCode(error.localizedDescription))
+                    // Release the readers waiting on the pipes, or two threads stay blocked per failed launch.
+                    try? stdoutPipe.fileHandleForWriting.close()
+                    try? stderrPipe.fileHandleForWriting.close()
+                    continuation.resume(throwing: error is CancellationError ? error : CondenserError.claudeCode(error.localizedDescription))
                 }
             }
         } onCancel: {

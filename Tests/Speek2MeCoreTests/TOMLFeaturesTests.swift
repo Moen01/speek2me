@@ -20,3 +20,15 @@ struct TOMLFeaturesTests {
         #expect(!TOMLFeatures.hooksEnabled(in: "[tui]\nhooks = true\n"))
     }
 }
+
+extension TOMLFeaturesTests {
+    @Test func handlesDottedRootKeys() {
+        #expect(TOMLFeatures.hooksEnabled(in: "features.hooks = true\n"))
+        #expect(TOMLFeatures.enableHooks(in: "features.hooks = false\n[tui]\nx = 1\n") == "features.hooks = true\n[tui]\nx = 1\n")
+        // Another dotted features key means a [features] header would redefine the table; add a dotted key instead.
+        #expect(TOMLFeatures.enableHooks(in: "model = \"gpt-5.2\"\nfeatures.other = true\n\n[tui]\nx = 1\n")
+                == "model = \"gpt-5.2\"\nfeatures.other = true\nfeatures.hooks = true\n\n[tui]\nx = 1\n")
+        // A dotted key inside another table is not a root key.
+        #expect(!TOMLFeatures.hooksEnabled(in: "[tui]\nfeatures.hooks = true\n"))
+    }
+}

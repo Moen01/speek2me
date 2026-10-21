@@ -29,3 +29,25 @@ struct ConfigFileTests {
         #expect(try ConfigFile.read(url) == Data("x".utf8))
     }
 }
+
+extension ConfigFileTests {
+    @Test func writeFollowsSymlinkAndKeepsIt() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("speek2me-config-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("dotfiles"), withIntermediateDirectories: true)
+        let real = dir.appendingPathComponent("dotfiles/settings.json")
+        try Data("a".utf8).write(to: real)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: real.path)
+        let link = dir.appendingPathComponent("settings.json")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+
+        let backup = try #require(try ConfigFile.writeWithBackup(Data("b".utf8), to: link))
+        #expect(backup.deletingLastPathComponent().path == real.deletingLastPathComponent().path)
+        #expect(try Data(contentsOf: backup) == Data("a".utf8))
+        #expect(try Data(contentsOf: real) == Data("b".utf8))
+        #expect(try ConfigFile.read(link) == Data("b".utf8))
+        let attributes = try FileManager.default.attributesOfItem(atPath: link.path)
+        #expect(attributes[.type] as? FileAttributeType == .typeSymbolicLink)
+        #expect((try FileManager.default.attributesOfItem(atPath: real.path)[.posixPermissions] as? Int) == 0o600)
+    }
+}

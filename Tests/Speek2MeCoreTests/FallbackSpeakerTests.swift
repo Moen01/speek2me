@@ -67,3 +67,39 @@ struct FallbackSpeakerTests {
         func add(_ value: String) { lock.lock(); values.append(value); lock.unlock() }
     }
 }
+
+extension FallbackSpeakerTests {
+    @Test func cancelledRequestIsNotAFailure() async {
+        final class CancellingSpeaker: Speaker, @unchecked Sendable {
+            func speak(_ text: String) async throws { throw URLError(.cancelled) }
+            func stop() async {}
+        }
+        let fallback = FakeSpeaker()
+        let speaker = FallbackSpeaker(primary: CancellingSpeaker(), fallback: fallback) { _ in }
+        await #expect(throws: CancellationError.self) { try await speaker.speak("hi") }
+        #expect(fallback.spoken.isEmpty)
+    }
+
+    @Test func secondPlaybackPreemptsTheFirst() async throws {
+        let playback = AudioPlayback()
+        let sound = try Data(contentsOf: Earcon.done.fileURL)
+        let first = Task { try await playback.play(sound) }
+        try await Task.sleep(for: .milliseconds(100))
+        try await playback.play(sound)
+        await #expect(throws: CancellationError.self) { try await first.value }
+    }
+
+    @Test func cancelledTaskDoesNotPlay() async throws {
+        let playback = AudioPlayback()
+        let sound = try Data(contentsOf: Earcon.done.fileURL)
+        let task = Task { () -> Duration in
+            let clock = ContinuousClock()
+            let start = clock.now
+            try? await Task.sleep(for: .seconds(1))
+            try? await playback.play(sound)
+            return clock.now - start
+        }
+        task.cancel()
+        #expect(try await task.value < .milliseconds(500))
+    }
+}

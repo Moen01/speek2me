@@ -19,6 +19,7 @@ struct VoiceSettings: View {
     var body: some View {
         Form {
             Section("ElevenLabs") {
+                Toggle("Use ElevenLabs when a key is saved", isOn: $settings.useElevenLabs)
                 SecureField(keySaved ? "Saved in the Keychain" : "ElevenLabs API key", text: $keyDraft)
                 HStack {
                     Button("Save key") { saveKey() }
@@ -117,6 +118,7 @@ struct VoiceSettings: View {
             }
         }
         await controller.speakSample("Speek2Me is ready. I will tell you when a session finishes or needs you.")
-        status = controller.lastFailure.map { (false, $0) } ?? (true, keySaved ? "Spoken with ElevenLabs." : "Spoken with the Apple voice. Add an ElevenLabs key for a better one.")
+        let usedElevenLabs = keySaved && settings.useElevenLabs
+        status = controller.lastFailure.map { (false, $0) } ?? (true, usedElevenLabs ? "Spoken with ElevenLabs." : "Spoken with the Apple voice. Add an ElevenLabs key for a better one.")
     }
 }
