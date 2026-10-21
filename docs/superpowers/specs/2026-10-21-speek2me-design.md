@@ -118,7 +118,10 @@ SwiftPM targets:
 3. The announcer builds the spoken text. `turnComplete`: condense the message
    (see Condenser), prefix with the project name. `needsYou`: fixed template
    from the reason and message. Example: "rea: done. Report ready, Chrome
-   stopped." / "rea needs you: permission to run git push."
+   stopped." / "rea needs you: permission to use Bash." The permission text
+   comes from the `Notification` message, which names the tool, not the
+   command. Reading the command would need the synchronous
+   `PermissionRequest` hook, which can block a session; not used.
 4. The speaker plays an earcon for the kind, then speaks. ElevenLabs first,
    Apple on failure. One utterance at a time.
 5. The menu-bar icon shows idle, speaking or needs-you. Menu: last
@@ -134,6 +137,14 @@ main thread).
 Mapping rules, applied in the hook CLI:
 
 - Claude `Stop` with `agent_id` present: ignore (subagent).
+- Any event whose `cwd` is under a temporary directory (the user's
+  `$TMPDIR`, `/var/folders/`, `/private/var/folders/`, `/tmp/`,
+  `/private/tmp/`): ignore. Verified on this Mac: a `Stop` hook also fires
+  for `claude -p` runs, and Talk2Me runs its cleanup turns from
+  `$TMPDIR/talk2me-claude`, so without this rule every dictation would be
+  spoken back. The cleaner fix is for Talk2Me to pass
+  `--settings '{"disableAllHooks":true}'`; that is a separate change in the
+  Talk2Me repo, not made here.
 - Claude `Stop` main thread: `turnComplete`, text = `last_assistant_message`.
   Empty or missing text: ignore.
 - Claude `Notification`: `permission_prompt` to needsYou/permission;
@@ -153,8 +164,11 @@ Mirrors Talk2Me's `CleanupBackend`. Protocol `Condenser`:
   `--strict-mcp-config`, `--disable-slash-commands`,
   `--no-session-persistence`, `--effort low`, `--output-format json`) plus
   `--settings '{"disableAllHooks":true}'` and env `SPEEK2ME_SUPPRESS=1`.
-  Locates `claude` the way Talk2Me does, with a custom path setting. Reads
-  `claude auth status --json` for the setup guide.
+  Locates `claude` from Talk2Me's candidate list plus every
+  `~/.nvm/versions/node/*/bin/claude`, runs `--version` on each candidate and
+  prefers the newest (this Mac has 2.1.179 from Homebrew and 2.1.306 from
+  nvm, and the cmux wrapper on PATH is skipped). A custom path setting wins.
+  Reads `claude auth status --json` for the setup guide.
 - `AnthropicMessagesCondenser`: `POST /v1/messages` with the Keychain key.
   Same wire code as Talk2Me.
 - `RawCondenser` (Off): strips markdown, code blocks, URLs and paths, keeps
@@ -246,7 +260,10 @@ Off.
 Copy Talk2Me's `scripts/build-app.sh`, `make-icon.sh`, `next-version.sh`,
 `package-release.sh`, `Resources/Info.plist` (`LSUIElement`), entitlements
 (no sandbox, network client, no microphone). Signing identity "Speek2Me
-Signing". Add the hook CLI to `Contents/MacOS`.
+Signing" when that keychain exists, otherwise ad-hoc, like Talk2Me. The
+certificate is not created by this project; with ad-hoc signing macOS may ask
+for Keychain access again after a rebuild. Add the hook CLI to
+`Contents/MacOS`.
 
 ## Tests
 
@@ -280,6 +297,21 @@ Core, same test style as Talk2Me:
 - Project name is the last component of `cwd`.
 - One hook CLI for both tools; Codex via hooks, not the older `notify`.
 - Repo name kept as typed: `speek2me`, app name `Speek2Me`.
+
+## Builder-check findings, settled
+
+- Talk2Me's `claude -p` turns fire `Stop` hooks: temp-directory filter in
+  the hook CLI (above).
+- Three `claude` installs on this Mac: prefer the newest by version (above).
+- Permission announcements name the tool only (above).
+- Signing: ad-hoc unless a "Speek2Me Signing" keychain exists (above).
+- Codex CLI is not installed on this Mac; its sessions were last used in
+  March 2026. Codex support is built from the docs and the session-file
+  format and shows "not found" in the setup guide until the CLI exists.
+  Verifying it needs the CLI installed; the user decides whether to install.
+- No ElevenLabs key is present; with no key the app speaks with the Apple
+  voice until a key is saved. The ElevenLabs path is covered by unit tests
+  against fixtures, not a live call.
 
 ## Answered by the user
 
