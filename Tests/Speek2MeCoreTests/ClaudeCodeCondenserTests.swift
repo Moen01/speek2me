@@ -44,7 +44,7 @@ struct ClaudeCodeCondenserTests {
         }
     }
 
-    @Test func parseOutputReportsErrorResults() {
+    @Test func parseOutputReportsErrorResults() throws {
         #expect(throws: CondenserError.claudeCode("boom")) {
             try ClaudeCodeCondenser.parseOutput(Data(#"{"is_error":true,"result":"boom"}"#.utf8))
         }
