@@ -1,0 +1,56 @@
+import Foundation
+
+/// Says one announcement out loud.
+public protocol Speaker: Sendable {
+    func speak(_ text: String) async throws
+    func stop() async
+}
+
+public enum SpeakerError: Error, Equatable, LocalizedError {
+    case missingAPIKey
+    case invalidAPIKey(String)
+    case quotaOrRateLimit(String)
+    case http(status: Int, message: String)
+    case timedOut
+    case badAudio
+    case playbackFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingAPIKey: "No ElevenLabs API key is saved."
+        case .invalidAPIKey(let message): "ElevenLabs rejected the key: \(message)"
+        case .quotaOrRateLimit(let message): "ElevenLabs quota or rate limit: \(message)"
+        case .http(let status, let message): "ElevenLabs error \(status): \(message)"
+        case .timedOut: "ElevenLabs took too long."
+        case .badAudio: "ElevenLabs returned no playable audio."
+        case .playbackFailed(let message): "Playback failed: \(message)"
+        }
+    }
+}
+
+/// The short system sound played before an announcement, so the kind is clear before the words.
+public enum Earcon: String, CaseIterable, Sendable {
+    case done
+    case permission
+    case question
+    case idle
+
+    public var fileURL: URL {
+        let name = switch self {
+        case .done: "Glass"
+        case .permission: "Sosumi"
+        case .question: "Ping"
+        case .idle: "Tink"
+        }
+        return URL(fileURLWithPath: "/System/Library/Sounds/\(name).aiff")
+    }
+
+    public static func forEvent(_ event: SessionEvent) -> Earcon {
+        switch (event.kind, event.reason) {
+        case (.turnComplete, _): .done
+        case (.needsYou, .permission): .permission
+        case (.needsYou, .question): .question
+        case (.needsYou, .idle), (.needsYou, .none): .idle
+        }
+    }
+}
