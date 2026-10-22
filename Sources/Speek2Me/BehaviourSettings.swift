@@ -14,8 +14,11 @@ struct BehaviourSettings: View {
                 }
                 Toggle("Speak idle nudges (\"… is waiting for you\")", isOn: $settings.speakIdle)
             }
+            Section("Pause") {
+                Toggle("Paused: nothing is read, condensed or spoken until resumed", isOn: $settings.muted)
+                Toggle("System-wide shortcut \(GlobalHotkey.pauseDescription) pauses and resumes", isOn: $settings.pauseHotkeyEnabled)
+            }
             Section("When to stay quiet") {
-                Toggle("Mute", isOn: $settings.muted)
                 Toggle("Quiet while a terminal is the front window (sound only)", isOn: $settings.quietWhenTerminalFocused)
                 TextField("Terminal bundle identifiers, one per line", text: $terminalList, axis: .vertical)
                     .font(.system(.body, design: .monospaced))

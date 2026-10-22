@@ -19,7 +19,7 @@ final class StatusBarController: NSObject {
     private let stateLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let lastLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let failureLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-    private let muteItem = NSMenuItem(title: "Mute", action: #selector(toggleMute), keyEquivalent: "m")
+    private let muteItem = NSMenuItem(title: "Pause announcements", action: #selector(toggleMute), keyEquivalent: "m")
     private let repairItem = NSMenuItem(title: "Repair hooks…", action: #selector(openSessions), keyEquivalent: "")
 
     init(controller: AnnouncementController, settings: AppSettings, actions: Actions) {
@@ -59,7 +59,7 @@ final class StatusBarController: NSObject {
 
     func refresh() {
         let (symbol, state): (String, String) = if settings.muted {
-            ("speaker.slash", "Muted")
+            ("pause.circle", "Paused" + (settings.pauseHotkeyEnabled ? ". \(GlobalHotkey.pauseDescription) resumes" : ""))
         } else {
             switch controller.phase {
             case .idle: ("speaker.wave.2", "Listening for sessions")
@@ -74,6 +74,7 @@ final class StatusBarController: NSObject {
         failureLine.title = controller.lastFailure.map { "Note: \($0.prefix(80))" } ?? ""
         failureLine.isHidden = controller.lastFailure == nil
         muteItem.state = settings.muted ? .on : .off
+        muteItem.title = settings.pauseHotkeyEnabled ? "Pause announcements (\(GlobalHotkey.pauseDescription))" : "Pause announcements"
         let stale = controller.hookHealth.values.contains { $0 == false }
         repairItem.isHidden = !stale
     }

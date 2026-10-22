@@ -26,6 +26,7 @@ final class AppSettings: ObservableObject {
         static let legacyAppleVoiceID = "appleVoiceID"
         static let earcons = "earcons"
         static let muted = "muted"
+        static let pauseHotkeyEnabled = "pauseHotkeyEnabled"
         static let quietWhenTerminalFocused = "quietWhenTerminalFocused"
         static let terminalBundleIDs = "terminalBundleIDs"
         static let speakIdle = "speakIdleNudges"
@@ -56,7 +57,9 @@ final class AppSettings: ObservableObject {
     @Published var piperPath: String { didSet { defaults.set(piperPath, forKey: Key.piperPath) } }
     @Published var piperModelPath: String { didSet { defaults.set(piperModelPath, forKey: Key.piperModelPath) } }
     @Published var earcons: Bool { didSet { defaults.set(earcons, forKey: Key.earcons) } }
+    /// Paused: nothing is read from the inbox, condensed or spoken until resumed.
     @Published var muted: Bool { didSet { defaults.set(muted, forKey: Key.muted) } }
+    @Published var pauseHotkeyEnabled: Bool { didSet { defaults.set(pauseHotkeyEnabled, forKey: Key.pauseHotkeyEnabled) } }
     @Published var quietWhenTerminalFocused: Bool { didSet { defaults.set(quietWhenTerminalFocused, forKey: Key.quietWhenTerminalFocused) } }
     @Published var terminalBundleIDs: [String] { didSet { defaults.set(terminalBundleIDs, forKey: Key.terminalBundleIDs) } }
     @Published var speakIdle: Bool { didSet { defaults.set(speakIdle, forKey: Key.speakIdle) } }
@@ -120,6 +123,7 @@ final class AppSettings: ObservableObject {
         piperModelPath = defaults.string(forKey: Key.piperModelPath) ?? ""
         earcons = defaults.object(forKey: Key.earcons) as? Bool ?? true
         muted = defaults.object(forKey: Key.muted) as? Bool ?? false
+        pauseHotkeyEnabled = defaults.object(forKey: Key.pauseHotkeyEnabled) as? Bool ?? true
         quietWhenTerminalFocused = defaults.object(forKey: Key.quietWhenTerminalFocused) as? Bool ?? false
         terminalBundleIDs = defaults.stringArray(forKey: Key.terminalBundleIDs) ?? Self.defaultTerminalBundleIDs
         speakIdle = defaults.object(forKey: Key.speakIdle) as? Bool ?? true

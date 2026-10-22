@@ -32,7 +32,7 @@ into text for the machine, Speek2Me turns the machine's final words into speech 
 | Provider | Needs | Default voice |
 | --- | --- | --- |
 | ElevenLabs | API key | Rachel, `eleven_flash_v2_5` |
-| Apple (on this Mac) | nothing; download a Premium voice in System Settings for a better one | system voice |
+| Apple (on this Mac) | nothing; download **Alex** (English) or **Henrik** (Norwegian) in System Settings › Accessibility › Spoken Content › Manage Voices for a much better one | system voice |
 | OpenAI | API key | `marin`, `gpt-4o-mini-tts` |
 | Google Cloud Text-to-Speech | API key with the Text-to-Speech API enabled | `en-US-Chirp3-HD-Aoede` |
 | Azure Speech | Speech resource key and region | `en-US-JennyNeural`, region `norwayeast` |
@@ -94,9 +94,16 @@ bundle and relaunches. Every push to `main` that changes more than docs publishe
 through `.github/workflows/release.yml`, signed with the same certificate from the repository
 secrets `SIGNING_CERT_P12` and `SIGNING_CERT_PASSWORD`.
 
+## Pause
+
+**Pause announcements** in the menu, or ⌃⌥⌘M from any app, stops everything: nothing is read
+from the inbox, nothing is sent to Claude, nothing is spoken, and whatever is playing stops. The
+same shortcut resumes; events that arrived in the last two minutes are then announced, older
+ones are dropped. The shortcut can be turned off in Settings › Behaviour.
+
 ## Menu
 
-Replay the last announcement, Stop the current one, Mute, and Settings for the voice, the Claude
+Replay the last announcement, Stop the current one, Pause, and Settings for the voice, the Claude
 backend, the hooks and the quiet rules (read the whole message, sentence cap, stay quiet while a
 terminal is in front, speak idle nudges).
 

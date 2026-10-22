@@ -54,8 +54,14 @@ final class AnnouncementController: ObservableObject {
         refreshHookHealth()
     }
 
+    /// Paused: leave the inbox alone, stop what is playing, forget what was queued. Resumed:
+    /// pick up what arrived meanwhile (the drain drops anything older than two minutes).
+    func setPaused(_ paused: Bool) {
+        if paused { stop() } else { drain() }
+    }
+
     func drain() {
-        guard let queue else { return }
+        guard let queue, !settings.muted else { return }
         let events = (try? inbox.drain()) ?? []
         // One task keeps the drained order; one task per event would race the actor hops.
         Task {

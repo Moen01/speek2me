@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
     private var subscriptions = Set<AnyCancellable>()
+    private var pauseHotkey: GlobalHotkey?
     private let settingsTab = CurrentValueSubject<SettingsTab, Never>(.voice)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -32,9 +33,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] _ in Task { await self?.controller.refreshClaudeExecutable() } }
             .store(in: &subscriptions)
 
+        settings.$muted
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] paused in self?.controller.setPaused(paused) }
+            .store(in: &subscriptions)
+        settings.$pauseHotkeyEnabled
+            .receive(on: RunLoop.main)
+            .sink { [weak self] enabled in self?.updatePauseHotkey(enabled) }
+            .store(in: &subscriptions)
+
         controller.start()
         if !settings.hasCompletedOnboarding {
             showOnboarding()
+        }
+    }
+
+    private func updatePauseHotkey(_ enabled: Bool) {
+        pauseHotkey?.unregister()
+        pauseHotkey = nil
+        guard enabled else { return }
+        pauseHotkey = GlobalHotkey(keyCode: GlobalHotkey.pauseKeyCode, modifiers: GlobalHotkey.pauseModifiers) { [weak self] in
+            self?.settings.muted.toggle()
         }
     }
 
