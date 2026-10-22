@@ -30,7 +30,7 @@ final class AnnouncementController: ObservableObject {
     init(settings: AppSettings) {
         self.settings = settings
         apple = AppleSpeaker(voiceIdentifier: { [weak settings] in
-            let id = settings?.appleVoiceID ?? ""
+            let id = settings?.voice(for: .apple) ?? ""
             return id.isEmpty ? nil : id
         })
     }
@@ -178,13 +178,27 @@ final class AnnouncementController: ObservableObject {
         }
     }
 
+    /// The selected provider first, the Apple voice when it fails. A provider that is selected
+    /// but not set up still goes through the fallback, so the menu says why.
     private func speaker() -> any Speaker {
-        let hasKey = settings.useElevenLabs && !(KeychainStore.read(.elevenLabs) ?? "").isEmpty
-        let voiceID = settings.voiceID
-        let modelID = settings.modelID
-        let primary: (any Speaker)? = hasKey
-            ? ElevenLabsSpeaker(playback: playback, apiKey: { KeychainStore.read(.elevenLabs) }, voiceID: { voiceID }, modelID: { modelID })
-            : nil
+        let provider = settings.voiceProvider
+        let primary: (any Speaker)?
+        switch provider {
+        case .apple:
+            primary = nil
+        case .piper:
+            let model = (settings.piperModelPath as NSString).expandingTildeInPath
+            if let executable = ToolLocator.piper(customPath: settings.piperPath), FileManager.default.fileExists(atPath: model), !settings.piperModelPath.isEmpty {
+                primary = PiperSpeaker(executable: executable, model: URL(fileURLWithPath: model), playback: playback)
+            } else {
+                primary = UnavailableSpeaker(.engine("Piper is not set up. Choose the piper command and a voice model in Settings."))
+            }
+        default:
+            let account = KeychainStore.account(for: provider)
+            let config = settings.cloudConfig(for: provider)
+            primary = CloudSpeaker(provider: provider, playback: playback,
+                                   apiKey: { account.flatMap(KeychainStore.read) }, config: { config })
+        }
         return FallbackSpeaker(primary: primary, fallback: apple) { [weak self] reason in
             Task { @MainActor in self?.lastFailure = reason }
         }

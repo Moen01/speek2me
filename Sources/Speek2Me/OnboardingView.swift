@@ -148,10 +148,9 @@ struct OnboardingView: View {
 final class SetupStatus: ObservableObject {
     enum State { case done, attention, optional, none }
 
+    /// nil until the Test voice button was used; false when the provider failed and Apple spoke instead.
+    @Published var voiceTested: Bool?
     // Read once and after a save: the Keychain is too slow to ask on every redraw.
-    @Published var elevenLabsKeySaved = KeychainStore.read(.elevenLabs) != nil
-    /// nil until tested; false when ElevenLabs rejected the saved key.
-    @Published var elevenLabsVerified: Bool?
     @Published var apiKeySaved = KeychainStore.read(.anthropic) != nil
     @Published private(set) var claude: ClaudeCodeCondenser.Status?
     @Published private(set) var claudeHooks = ClaudeHooksInstaller.isInstalled()
@@ -163,7 +162,6 @@ final class SetupStatus: ObservableObject {
     func refresh(settings: AppSettings, controller: AnnouncementController) async {
         checking = true
         defer { checking = false }
-        elevenLabsKeySaved = KeychainStore.read(.elevenLabs) != nil
         apiKeySaved = KeychainStore.read(.anthropic) != nil
         await controller.refreshClaudeExecutable()
         claude = if let executable = controller.claudeExecutable { await ClaudeCodeCondenser.status(of: executable) } else { nil }
@@ -177,6 +175,19 @@ final class SetupStatus: ObservableObject {
         controller.refreshHookHealth()
     }
 
+    /// Whether the chosen provider has what it needs: a key, or the Piper files, or nothing for Apple.
+    func voiceConfigured(_ settings: AppSettings) -> Bool {
+        switch settings.voiceProvider {
+        case .apple:
+            return true
+        case .piper:
+            let model = (settings.piperModelPath as NSString).expandingTildeInPath
+            return ToolLocator.piper(customPath: settings.piperPath) != nil && !settings.piperModelPath.isEmpty && FileManager.default.fileExists(atPath: model)
+        default:
+            return KeychainStore.account(for: settings.voiceProvider).flatMap(KeychainStore.read) != nil
+        }
+    }
+
     func claudeReady(_ settings: AppSettings) -> Bool {
         switch settings.condenser {
         case .off: false
@@ -188,7 +199,7 @@ final class SetupStatus: ObservableObject {
     func state(of step: OnboardingView.Step, settings: AppSettings) -> State {
         switch step {
         case .welcome, .ready: .none
-        case .voice: elevenLabsKeySaved ? (elevenLabsVerified == false ? .attention : .done) : .optional
+        case .voice: !voiceConfigured(settings) || voiceTested == false ? .attention : .done
         case .claude: settings.condenser == .off ? .optional : claudeReady(settings) ? .done : .attention
         case .sessions: claudeHooks ? .done : .attention
         case .tryIt: heard ? .done : .optional
@@ -221,103 +232,19 @@ private struct VoiceStep: View {
     @ObservedObject var controller: AnnouncementController
     @ObservedObject var setup: SetupStatus
 
-    @State private var keyDraft = ""
-    @State private var result: (ok: Bool, text: String)?
-    @State private var busy = false
-
-    private let appleVoices = AVSpeechSynthesisVoice.speechVoices().sorted { ($0.language, $0.name) < ($1.language, $1.name) }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             StepHeader(symbol: "speaker.wave.2", title: "Pick a voice",
-                       subtitle: "ElevenLabs sounds best and needs an API key. The Apple voice is built in and always the fallback.")
-            Picker("", selection: $settings.useElevenLabs) {
-                Text("ElevenLabs").tag(true)
-                Text("Apple voice only").tag(false)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 320)
-
+                       subtitle: "Cloud voices sound best and need a key. Apple and Piper run on this Mac. Whatever you pick, the Apple voice steps in if it fails.")
             Card {
-                VStack(alignment: .leading, spacing: 10) {
-                    if settings.useElevenLabs {
-                        HStack {
-                            SecureField(setup.elevenLabsKeySaved ? "Saved in your Keychain" : "Paste your ElevenLabs API key", text: $keyDraft)
-                                .textFieldStyle(.roundedBorder)
-                            Button("Save") {
-                                let key = keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                guard !key.isEmpty, KeychainStore.save(.elevenLabs, key) else { return }
-                                keyDraft = ""
-                                setup.elevenLabsKeySaved = true
-                                setup.elevenLabsVerified = nil
-                                result = nil
-                            }
-                            .disabled(keyDraft.isEmpty)
-                        }
-                        if setup.elevenLabsKeySaved {
-                            HStack {
-                                Label("Key saved in your Keychain", systemImage: "key.fill").foregroundStyle(.green)
-                                Button("Remove key", role: .destructive) {
-                                    KeychainStore.delete(.elevenLabs)
-                                    setup.elevenLabsKeySaved = false
-                                    setup.elevenLabsVerified = nil
-                                }
-                                .controlSize(.small)
-                            }
-                        }
-                        HStack(spacing: 4) {
-                            Text("Each announcement is billed to your key.")
-                            Link("Get an API key", destination: URL(string: "https://elevenlabs.io/app/settings/api-keys")!)
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    } else {
-                        Picker("Apple voice", selection: $settings.appleVoiceID) {
-                            Text("System default").tag("")
-                            ForEach(appleVoices, id: \.identifier) { voice in
-                                Text("\(voice.name) (\(voice.language))").tag(voice.identifier)
-                            }
-                        }
-                        Text("Better voices can be downloaded in System Settings > Accessibility > Spoken Content.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                VoiceProviderCard(settings: settings, controller: controller) { ok in
+                    setup.voiceTested = ok
                 }
             }
-            .frame(maxWidth: 480)
-
-            HStack {
-                Button(busy ? "Speaking…" : "Test voice") { Task { await test() } }
-                    .disabled(busy)
-                Toggle("Short sound before each announcement", isOn: $settings.earcons)
-            }
-            if let result {
-                Label(result.text, systemImage: result.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(result.ok ? .green : .orange)
-                    .font(.callout)
-                    .frame(maxWidth: 480, alignment: .leading)
-                    .lineLimit(3)
-            }
+            .frame(maxWidth: 560)
+            Toggle("Short sound before each announcement", isOn: $settings.earcons)
         }
-    }
-
-    private func test() async {
-        busy = true
-        defer { busy = false }
-        if settings.useElevenLabs, let key = KeychainStore.read(.elevenLabs) {
-            do {
-                try await ElevenLabsClient.verify(apiKey: key)
-                setup.elevenLabsVerified = true
-            } catch {
-                setup.elevenLabsVerified = false
-                result = (false, (error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
-                return
-            }
-        }
-        await controller.speakSample("Hi, this is Speek2Me. I will tell you when a session finishes, or needs you.")
-        result = controller.lastFailure.map { (false, $0) }
-            ?? (true, setup.elevenLabsKeySaved && settings.useElevenLabs ? "Spoken with ElevenLabs." : "Spoken with the Apple voice.")
+        .onChange(of: settings.voiceProvider) { setup.voiceTested = nil }
     }
 }
 
@@ -667,8 +594,8 @@ private struct ReadyStep: View {
             StepHeader(symbol: "checkmark.seal", title: "You're set",
                        subtitle: "Speek2Me lives in your menu bar. Start a session and walk away.")
             VStack(spacing: 10) {
-                SetupRow(ok: setup.elevenLabsKeySaved ? setup.elevenLabsVerified != false : nil, title: "Voice",
-                         detail: setup.elevenLabsKeySaved ? "ElevenLabs, with the Apple voice as fallback." : "Apple voice. Add an ElevenLabs key any time in Settings.") {
+                SetupRow(ok: setup.voiceConfigured(settings) && setup.voiceTested != false, title: "Voice",
+                         detail: voiceDetail) {
                     Button("Change…") { go(.voice) }
                 }
                 SetupRow(ok: settings.condenser == .off ? nil : setup.claudeReady(settings), title: "Claude",
@@ -688,6 +615,13 @@ private struct ReadyStep: View {
             }
             .frame(maxWidth: 500)
         }
+    }
+
+    private var voiceDetail: String {
+        let name = settings.voiceProvider.displayName
+        if !setup.voiceConfigured(settings) { return "\(name) is selected but not set up; the Apple voice will speak instead." }
+        if setup.voiceTested == false { return "\(name) failed its test; the Apple voice spoke instead." }
+        return settings.voiceProvider == .apple ? "Apple voice." : "\(name), with the Apple voice as fallback."
     }
 
     private var claudeDetail: String {

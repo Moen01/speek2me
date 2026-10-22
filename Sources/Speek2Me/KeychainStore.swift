@@ -1,11 +1,30 @@
 import Foundation
 import Security
+import Speek2MeCore
 
 /// Stores the API keys in the login Keychain, never in a file.
 enum KeychainStore {
     enum Account: String {
         case anthropic = "anthropic-api-key"
         case elevenLabs = "elevenlabs-api-key"
+        case openAI = "openai-api-key"
+        case googleCloud = "google-tts-api-key"
+        case azure = "azure-speech-key"
+        case deepgram = "deepgram-api-key"
+        case cartesia = "cartesia-api-key"
+    }
+
+    /// The Keychain item for a cloud voice provider; nil for Apple and Piper.
+    static func account(for provider: VoiceProvider) -> Account? {
+        switch provider {
+        case .elevenLabs: .elevenLabs
+        case .openAI: .openAI
+        case .googleCloud: .googleCloud
+        case .azure: .azure
+        case .deepgram: .deepgram
+        case .cartesia: .cartesia
+        case .apple, .piper: nil
+        }
     }
 
     private static let service = "dev.speek2me.Speek2Me"

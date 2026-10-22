@@ -9,7 +9,7 @@ struct HookCommandTests {
         #expect(command == "\"/Applications/Speek2Me.app/Contents/MacOS/speek2me-hook\" claude")
         #expect(HookCommand.executablePath(in: command) == "/Applications/Speek2Me.app/Contents/MacOS/speek2me-hook")
         #expect(HookCommand.executablePath(in: "/x/y hook") == "/x/y")
-        #expect(HookCommand.isHealthy(command) == false)
+        #expect(HookCommand.isHealthy("\"/Applications/Nope-\(UUID().uuidString).app/Contents/MacOS/speek2me-hook\" claude") == false)
         #expect(HookCommand.isHealthy("\"/bin/ls\" claude"))
     }
 }

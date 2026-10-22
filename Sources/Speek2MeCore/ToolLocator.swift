@@ -14,6 +14,16 @@ public enum ToolLocator {
         ])
     }
 
+    public static var piperCandidates: [URL] {
+        executables(named: "piper", in: [
+            "/opt/homebrew/bin", "/usr/local/bin", "~/.local/bin", "~/Library/Python/3.12/bin", "~/Library/Python/3.13/bin", "~/.pyenv/shims",
+        ])
+    }
+
+    public static func piper(customPath: String?) -> URL? {
+        custom(customPath) ?? piperCandidates.first
+    }
+
     /// The custom path when it is executable, else the first candidate found. Fast; no process runs.
     public static func claude(customPath: String?) -> URL? {
         custom(customPath) ?? claudeCandidates.first

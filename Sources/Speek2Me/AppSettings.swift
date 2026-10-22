@@ -13,10 +13,17 @@ final class AppSettings: ObservableObject {
         static let extraInstructions = "extraInstructions"
         static let readFull = "readFullMessage"
         static let maxSentences = "maxSentences"
-        static let useElevenLabs = "useElevenLabs"
-        static let voiceID = "elevenLabsVoiceID"
-        static let modelID = "elevenLabsModelID"
-        static let appleVoiceID = "appleVoiceID"
+        static let voiceProvider = "voiceProvider"
+        static let providerVoices = "providerVoices"
+        static let providerModels = "providerModels"
+        static let providerRegions = "providerRegions"
+        static let piperPath = "piperPath"
+        static let piperModelPath = "piperModelPath"
+        // Older builds stored ElevenLabs-only settings under these keys.
+        static let legacyUseElevenLabs = "useElevenLabs"
+        static let legacyVoiceID = "elevenLabsVoiceID"
+        static let legacyModelID = "elevenLabsModelID"
+        static let legacyAppleVoiceID = "appleVoiceID"
         static let earcons = "earcons"
         static let muted = "muted"
         static let quietWhenTerminalFocused = "quietWhenTerminalFocused"
@@ -41,16 +48,48 @@ final class AppSettings: ObservableObject {
     /// Speak the whole final message (trimmed of markup) instead of a condensed version.
     @Published var readFull: Bool { didSet { defaults.set(readFull, forKey: Key.readFull) } }
     @Published var maxSentences: Int { didSet { defaults.set(maxSentences, forKey: Key.maxSentences) } }
-    /// Off keeps a saved key but speaks with the Apple voice only.
-    @Published var useElevenLabs: Bool { didSet { defaults.set(useElevenLabs, forKey: Key.useElevenLabs) } }
-    @Published var voiceID: String { didSet { defaults.set(voiceID, forKey: Key.voiceID) } }
-    @Published var modelID: String { didSet { defaults.set(modelID, forKey: Key.modelID) } }
-    @Published var appleVoiceID: String { didSet { defaults.set(appleVoiceID, forKey: Key.appleVoiceID) } }
+    @Published var voiceProvider: VoiceProvider { didSet { defaults.set(voiceProvider.rawValue, forKey: Key.voiceProvider) } }
+    /// Per provider: the voice (or voice id, or Deepgram model). Missing means the provider's default.
+    @Published var providerVoices: [String: String] { didSet { defaults.set(providerVoices, forKey: Key.providerVoices) } }
+    @Published var providerModels: [String: String] { didSet { defaults.set(providerModels, forKey: Key.providerModels) } }
+    @Published var providerRegions: [String: String] { didSet { defaults.set(providerRegions, forKey: Key.providerRegions) } }
+    @Published var piperPath: String { didSet { defaults.set(piperPath, forKey: Key.piperPath) } }
+    @Published var piperModelPath: String { didSet { defaults.set(piperModelPath, forKey: Key.piperModelPath) } }
     @Published var earcons: Bool { didSet { defaults.set(earcons, forKey: Key.earcons) } }
     @Published var muted: Bool { didSet { defaults.set(muted, forKey: Key.muted) } }
     @Published var quietWhenTerminalFocused: Bool { didSet { defaults.set(quietWhenTerminalFocused, forKey: Key.quietWhenTerminalFocused) } }
     @Published var terminalBundleIDs: [String] { didSet { defaults.set(terminalBundleIDs, forKey: Key.terminalBundleIDs) } }
     @Published var speakIdle: Bool { didSet { defaults.set(speakIdle, forKey: Key.speakIdle) } }
+
+    // MARK: - Per-provider voice settings
+
+    func voice(for provider: VoiceProvider) -> String {
+        providerVoices[provider.rawValue] ?? provider.defaultVoice
+    }
+
+    func setVoice(_ value: String, for provider: VoiceProvider) {
+        providerVoices[provider.rawValue] = value
+    }
+
+    func model(for provider: VoiceProvider) -> String {
+        providerModels[provider.rawValue] ?? provider.defaultModel
+    }
+
+    func setModel(_ value: String, for provider: VoiceProvider) {
+        providerModels[provider.rawValue] = value
+    }
+
+    func region(for provider: VoiceProvider) -> String {
+        providerRegions[provider.rawValue] ?? provider.defaultRegion
+    }
+
+    func setRegion(_ value: String, for provider: VoiceProvider) {
+        providerRegions[provider.rawValue] = value
+    }
+
+    func cloudConfig(for provider: VoiceProvider) -> CloudSpeechConfig {
+        CloudSpeechConfig(voice: voice(for: provider), model: model(for: provider), region: region(for: provider))
+    }
 
     var hasCompletedOnboarding: Bool {
         get { defaults.bool(forKey: Key.onboarded) }
@@ -67,10 +106,18 @@ final class AppSettings: ObservableObject {
         extraInstructions = defaults.string(forKey: Key.extraInstructions) ?? ""
         readFull = defaults.object(forKey: Key.readFull) as? Bool ?? false
         maxSentences = defaults.object(forKey: Key.maxSentences) as? Int ?? 3
-        useElevenLabs = defaults.object(forKey: Key.useElevenLabs) as? Bool ?? true
-        voiceID = defaults.string(forKey: Key.voiceID) ?? ElevenLabsClient.defaultVoiceID
-        modelID = defaults.string(forKey: Key.modelID) ?? ElevenLabsClient.defaultModelID
-        appleVoiceID = defaults.string(forKey: Key.appleVoiceID) ?? ""
+        let legacyApple = defaults.object(forKey: Key.legacyUseElevenLabs) as? Bool == false
+        voiceProvider = defaults.string(forKey: Key.voiceProvider).flatMap(VoiceProvider.init(rawValue:)) ?? (legacyApple ? .apple : .elevenLabs)
+        var voices = defaults.dictionary(forKey: Key.providerVoices) as? [String: String] ?? [:]
+        if let legacy = defaults.string(forKey: Key.legacyVoiceID), voices[VoiceProvider.elevenLabs.rawValue] == nil { voices[VoiceProvider.elevenLabs.rawValue] = legacy }
+        if let legacy = defaults.string(forKey: Key.legacyAppleVoiceID), voices[VoiceProvider.apple.rawValue] == nil { voices[VoiceProvider.apple.rawValue] = legacy }
+        providerVoices = voices
+        var models = defaults.dictionary(forKey: Key.providerModels) as? [String: String] ?? [:]
+        if let legacy = defaults.string(forKey: Key.legacyModelID), models[VoiceProvider.elevenLabs.rawValue] == nil { models[VoiceProvider.elevenLabs.rawValue] = legacy }
+        providerModels = models
+        providerRegions = defaults.dictionary(forKey: Key.providerRegions) as? [String: String] ?? [:]
+        piperPath = defaults.string(forKey: Key.piperPath) ?? ""
+        piperModelPath = defaults.string(forKey: Key.piperModelPath) ?? ""
         earcons = defaults.object(forKey: Key.earcons) as? Bool ?? true
         muted = defaults.object(forKey: Key.muted) as? Bool ?? false
         quietWhenTerminalFocused = defaults.object(forKey: Key.quietWhenTerminalFocused) as? Bool ?? false

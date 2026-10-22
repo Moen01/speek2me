@@ -324,3 +324,14 @@ Core, same test style as Talk2Me:
 UI copy and layout, app icon, exact earcon files, default ElevenLabs voice
 and model id, prompt wording, directory-watch implementation, the list of
 `codex` install locations to probe, and test fixture contents.
+
+## Addendum 2026-10-22: voice providers
+
+The user asked for every fallback option as a dropdown so each can be tested. `VoiceProvider`
+now lists ElevenLabs, Apple, OpenAI, Google Cloud, Azure, Deepgram, Cartesia and Piper. One
+`CloudSpeechClient` builds the request and parses the response per cloud provider (all MP3; Google
+returns base64 inside JSON; Azure takes SSML and a region); `CloudSpeaker` replaces the
+ElevenLabs-only speaker. `PiperSpeaker` runs a bring-your-own `piper` command with a voice
+model; the app never downloads executables. Keys live in one Keychain item per provider.
+Settings and the setup guide share `VoiceProviderCard`. The Apple voice stays the fallback for
+every other provider. Kokoro was left out: it needs a Python runtime the app would have to manage.

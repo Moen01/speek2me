@@ -123,86 +123,22 @@ public struct ClaudeCodeCondenser: Condenser {
     // MARK: - Process
 
     /// Runs `claude` in an empty temporary directory so no project CLAUDE.md is picked up.
-    /// Cancelling the calling task terminates the process.
     static func run(_ executable: URL, arguments: [String], stdin input: String) async throws -> Data {
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = arguments
-        process.currentDirectoryURL = workingDirectory()
-        process.environment = environment(for: executable)
-
-        let stdinPipe = Pipe(), stdoutPipe = Pipe(), stderrPipe = Pipe()
-        process.standardInput = stdinPipe
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
-                let collector = OutputCollector()
-                let group = DispatchGroup()
-                for (pipe, isStdout) in [(stdoutPipe, true), (stderrPipe, false)] {
-                    group.enter()
-                    DispatchQueue.global().async {
-                        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                        collector.store(data, stdout: isStdout)
-                        group.leave()
-                    }
-                }
-                process.terminationHandler = { process in
-                    DispatchQueue.global().async {
-                        // A child of claude can keep the pipes open after claude exits; don't wait on it forever.
-                        _ = group.wait(timeout: .now() + 1)
-                        let (out, err) = collector.values
-                        if process.terminationReason == .uncaughtSignal {
-                            continuation.resume(throwing: CancellationError())
-                        } else if process.terminationStatus != 0, out.isEmpty {
-                            let message = String(decoding: err.prefix(300), as: UTF8.self)
-                            continuation.resume(throwing: CondenserError.claudeCode(
-                                message.isEmpty ? "exit status \(process.terminationStatus)" : message))
-                        } else {
-                            // A failed turn still prints its JSON result with is_error set.
-                            continuation.resume(returning: out)
-                        }
-                    }
-                }
-                do {
-                    // Cancelled before launch: do not start a process nobody will wait for.
-                    if Task.isCancelled { throw CancellationError() }
-                    try process.run()
-                    // Throws instead of crashing when claude exits before reading (SIGPIPE is ignored at launch).
-                    try? stdinPipe.fileHandleForWriting.write(contentsOf: Data(input.utf8))
-                    try? stdinPipe.fileHandleForWriting.close()
-                } catch {
-                    process.terminationHandler = nil
-                    // Release the readers waiting on the pipes, or two threads stay blocked per failed launch.
-                    try? stdoutPipe.fileHandleForWriting.close()
-                    try? stderrPipe.fileHandleForWriting.close()
-                    continuation.resume(throwing: error is CancellationError ? error : CondenserError.claudeCode(error.localizedDescription))
-                }
-            }
-        } onCancel: {
-            guard process.isRunning else { return }
-            process.terminate()
-            // SIGTERM can be ignored; the deadline must still end.
-            let pid = process.processIdentifier
-            DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
-                if process.isRunning { kill(pid, SIGKILL) }
-            }
+        do {
+            return try await ProcessRunner.run(
+                executable, arguments: arguments, stdin: Data(input.utf8),
+                environment: environment(for: executable), workingDirectory: workingDirectory())
+        } catch ProcessError.failed(let message) {
+            throw CondenserError.claudeCode(message)
         }
     }
 
-    /// An app opened from Finder gets only /usr/bin:/bin:/usr/sbin:/sbin. An npm install of claude
-    /// is a `#!/usr/bin/env node` script, so put claude's own folder (where node lives too) first.
-    /// `SPEEK2ME_SUPPRESS` tells the hook CLI that this run is ours.
+    /// `ProcessRunner`'s PATH plus `SPEEK2ME_SUPPRESS`, which tells the hook CLI that this run is ours.
     static func environment(
         for executable: URL,
         base: [String: String] = ProcessInfo.processInfo.environment
     ) -> [String: String] {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let preferred = [executable.deletingLastPathComponent().path, "/opt/homebrew/bin", "/usr/local/bin", "\(home)/.local/bin"]
-        let existing = (base["PATH"] ?? "").split(separator: ":").map(String.init)
-        var environment = base
-        environment["PATH"] = (preferred + existing.filter { !preferred.contains($0) }).joined(separator: ":")
+        var environment = ProcessRunner.environment(for: executable, base: base)
         environment["SPEEK2ME_SUPPRESS"] = "1"
         return environment
     }
@@ -211,21 +147,5 @@ public struct ClaudeCodeCondenser: Condenser {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("speek2me-claude", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
-    }
-}
-
-private final class OutputCollector: @unchecked Sendable {
-    private let lock = NSLock()
-    private var out = Data()
-    private var err = Data()
-
-    func store(_ data: Data, stdout: Bool) {
-        lock.lock(); defer { lock.unlock() }
-        if stdout { out = data } else { err = data }
-    }
-
-    var values: (Data, Data) {
-        lock.lock(); defer { lock.unlock() }
-        return (out, err)
     }
 }

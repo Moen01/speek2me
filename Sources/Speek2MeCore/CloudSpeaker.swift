@@ -1,27 +1,27 @@
 import Foundation
 
-/// The cloud voice: fetches MP3 audio for the text and plays it.
-public struct ElevenLabsSpeaker: Speaker {
+/// A cloud voice: fetches MP3 audio for the text from the selected provider and plays it.
+public struct CloudSpeaker: Speaker {
+    private let provider: VoiceProvider
     private let session: URLSession
     private let playback: AudioPlayback
     private let apiKey: @Sendable () -> String?
-    private let voiceID: @Sendable () -> String
-    private let modelID: @Sendable () -> String
+    private let config: @Sendable () -> CloudSpeechConfig
     private let timeout: Duration
 
     public init(
+        provider: VoiceProvider,
         session: URLSession = .shared,
         playback: AudioPlayback,
         apiKey: @escaping @Sendable () -> String?,
-        voiceID: @escaping @Sendable () -> String,
-        modelID: @escaping @Sendable () -> String,
+        config: @escaping @Sendable () -> CloudSpeechConfig,
         timeout: Duration = .seconds(10)
     ) {
+        self.provider = provider
         self.session = session
         self.playback = playback
         self.apiKey = apiKey
-        self.voiceID = voiceID
-        self.modelID = modelID
+        self.config = config
         self.timeout = timeout
     }
 
@@ -29,7 +29,7 @@ public struct ElevenLabsSpeaker: Speaker {
         guard let key = apiKey()?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
             throw SpeakerError.missingAPIKey
         }
-        var request = try ElevenLabsClient.makeSpeechRequest(text: text, voiceID: voiceID(), modelID: modelID(), apiKey: key)
+        var request = try CloudSpeechClient.makeRequest(provider: provider, text: text, config: config(), apiKey: key)
         request.timeoutInterval = TimeInterval(timeout.components.seconds)
         let data: Data
         let response: URLResponse
@@ -40,7 +40,7 @@ public struct ElevenLabsSpeaker: Speaker {
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
         }
-        let audio = try ElevenLabsClient.parseSpeechResponse(data: data, status: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        let audio = try CloudSpeechClient.parseResponse(provider: provider, data: data, status: (response as? HTTPURLResponse)?.statusCode ?? 0)
         try await playback.play(audio)
     }
 

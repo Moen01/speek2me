@@ -23,9 +23,26 @@ into text for the machine, Speek2Me turns the machine's final words into speech 
    sentences: by your own Claude Code install (signed in with `claude auth login`, run with
    hooks off so it never announces itself), by a Claude API key, or not at all (the first
    sentences are read as they are).
-3. A short system sound tells you the kind of event, then the voice speaks. ElevenLabs when a
-   key is saved, the Apple voice otherwise, and the Apple voice again whenever ElevenLabs fails,
-   so an announcement is never lost.
+3. A short system sound tells you the kind of event, then the voice speaks. Pick the provider in
+   Settings › Voice; the Apple voice steps in whenever the provider fails, so an announcement is
+   never lost.
+
+## Voice providers
+
+| Provider | Needs | Default voice |
+| --- | --- | --- |
+| ElevenLabs | API key | Rachel, `eleven_flash_v2_5` |
+| Apple (on this Mac) | nothing; download a Premium voice in System Settings for a better one | system voice |
+| OpenAI | API key | `marin`, `gpt-4o-mini-tts` |
+| Google Cloud Text-to-Speech | API key with the Text-to-Speech API enabled | `en-US-Chirp3-HD-Aoede` |
+| Azure Speech | Speech resource key and region | `en-US-JennyNeural`, region `norwayeast` |
+| Deepgram Aura | API key | `aura-2-thalia-en` |
+| Cartesia Sonic | API key | Cartesia's docs voice, `sonic-3.6` |
+| Piper (local) | `pip install piper-tts` and a voice `.onnx` + `.onnx.json` | your model |
+
+Every cloud provider is called over HTTPS with the key from the Keychain and returns MP3; all of
+them have unit tests for the request shape. Only ElevenLabs and Apple have been exercised against
+the real service so far.
 
 Several sessions at once are fine: each announcement starts with the project folder's name, and
 a newer event from the same session replaces one you have not heard yet.
@@ -59,10 +76,10 @@ test turn. Reopen it any time from the menu-bar icon with **Setup Guide…**.
 
 ## Privacy
 
-- With ElevenLabs set up, the spoken sentences are sent to ElevenLabs and billed to your key.
+- With a cloud voice provider set up, the spoken sentences are sent to that provider and billed to your key.
 - With a Claude backend on, the full final message is sent to Claude (through your Claude Code
   subscription or your API key) to be condensed.
-- With Claude off and no ElevenLabs key, nothing leaves this Mac.
+- With Claude off and Apple or Piper as the voice, nothing leaves this Mac.
 - Keys are stored in the macOS Keychain. The inbox files hold only the event text and are
   deleted as soon as they are read.
 
