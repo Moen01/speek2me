@@ -1,15 +1,16 @@
 import AVFoundation
 import Foundation
 
-/// Plays one piece of audio data (an MP3 from ElevenLabs, or an AIFF earcon) and waits for it to end.
-public final class AudioPlayback: NSObject, AVAudioPlayerDelegate, @unchecked Sendable {
+/// Plays one piece of audio data (an MP3 from a cloud voice, or an AIFF earcon) and waits for it to end.
+///
+/// Completion is detected by polling `isPlaying` rather than through the player's delegate: the
+/// delegate needs a pumped main run loop, which a test host does not always have, and a callback
+/// that never comes would hang the announcement queue for good.
+public final class AudioPlayback: @unchecked Sendable {
     private let lock = NSLock()
-    /// The player in use and who is waiting for it. Callbacks from any other player are ignored.
-    private var current: (player: AVAudioPlayer, continuation: CheckedContinuation<Void, Error>)?
+    private var current: AVAudioPlayer?
 
-    public override init() {
-        super.init()
-    }
+    public init() {}
 
     public func play(_ data: Data) async throws {
         try Task.checkCancellation()
@@ -20,51 +21,42 @@ public final class AudioPlayback: NSObject, AVAudioPlayerDelegate, @unchecked Se
         } catch {
             throw SpeakerError.badAudio
         }
-        player.delegate = self
+        lock.withLock { current = player }
+        guard player.play() else {
+            clear(player)
+            throw SpeakerError.playbackFailed("could not start")
+        }
         try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                lock.lock()
-                current = (player, continuation)
-                lock.unlock()
-                if !player.play() {
-                    finish(player, .failure(SpeakerError.playbackFailed("could not start")))
-                }
+            while isCurrent(player), player.isPlaying {
+                try await Task.sleep(for: .milliseconds(40))
             }
         } onCancel: {
-            preempt()
+            // Stops the current player, which is this one unless something newer replaced it already.
+            stop()
         }
+        // Stopped or replaced by a newer announcement: the caller is told it was cancelled.
+        guard isCurrent(player) else { throw CancellationError() }
+        clear(player)
     }
 
     public func stop() {
         preempt()
     }
 
-    /// Takes the current continuation out, stops its player and resumes it as cancelled.
+    private func isCurrent(_ player: AVAudioPlayer) -> Bool {
+        lock.withLock { current === player }
+    }
+
+    private func clear(_ player: AVAudioPlayer) {
+        lock.withLock { if current === player { current = nil } }
+    }
+
     private func preempt() {
-        lock.lock()
-        let previous = current
-        current = nil
-        lock.unlock()
-        previous?.player.stop()
-        previous?.continuation.resume(throwing: CancellationError())
-    }
-
-    private func finish(_ player: AVAudioPlayer, _ result: Result<Void, Error>) {
-        lock.lock()
-        guard let current, current.player === player else {
-            lock.unlock()
-            return
+        let previous = lock.withLock { () -> AVAudioPlayer? in
+            let player = current
+            current = nil
+            return player
         }
-        self.current = nil
-        lock.unlock()
-        current.continuation.resume(with: result)
-    }
-
-    public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        finish(player, flag ? .success(()) : .failure(SpeakerError.playbackFailed("stopped early")))
-    }
-
-    public func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-        finish(player, .failure(SpeakerError.playbackFailed(error?.localizedDescription ?? "decode error")))
+        previous?.stop()
     }
 }
