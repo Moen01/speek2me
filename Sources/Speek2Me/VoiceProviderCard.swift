@@ -16,9 +16,13 @@ struct VoiceProviderCard: View {
     @State private var status: (ok: Bool, text: String)?
     @State private var busy = false
 
-    private let appleVoices = AVSpeechSynthesisVoice.speechVoices().sorted {
-        ($0.language, $0.name) < ($1.language, $1.name)
-    }
+    @State private var appleVoices: [AVSpeechSynthesisVoice] = []
+
+    /// Apple voices worth downloading: far better than the defaults, free, offline.
+    private static let recommendedAppleVoices: [(name: String, language: String, label: String)] = [
+        ("Alex", "en", "English"),
+        ("Henrik", "nb", "Norwegian"),
+    ]
 
     private var provider: VoiceProvider { settings.voiceProvider }
 
@@ -55,6 +59,7 @@ struct VoiceProviderCard: View {
             status = nil
             keyDraft = ""
             refreshKeyState()
+            refreshAppleVoices()
             if provider == .elevenLabs, keySaved, elevenLabsVoices.isEmpty { await loadElevenLabsVoices() }
         }
     }
@@ -98,11 +103,30 @@ struct VoiceProviderCard: View {
                         .tag(voice.identifier)
                 }
             }
-            HStack {
-                Button("Download better voices…") {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Accessibility-Settings.extension")!)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Recommended: Alex for English, Henrik for Norwegian. Both download once to this Mac and work offline.")
+                    .font(.callout)
+                ForEach(Self.recommendedAppleVoices, id: \.name) { recommended in
+                    HStack {
+                        if let voice = installedAppleVoice(recommended.name, language: recommended.language) {
+                            Label("\(recommended.name) (\(recommended.label)) is installed", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            let inUse = settings.voice(for: .apple) == voice.identifier
+                            Button(inUse ? "In use" : "Use \(recommended.name)") { settings.setVoice(voice.identifier, for: .apple) }
+                                .disabled(inUse)
+                        } else {
+                            Label("\(recommended.name) (\(recommended.label)) is not downloaded yet", systemImage: "arrow.down.circle")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
-                Text("Accessibility › Spoken Content › System Voice › Manage Voices. Pick a Premium one, then choose it here.")
+                HStack {
+                    Button("Open Spoken Content settings…") {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Accessibility-Settings.extension?SpokenContent")!)
+                    }
+                    Button("Check again") { refreshAppleVoices() }
+                }
+                Text("There: System Voice › Manage Voices…, search for Alex or Henrik, click the download arrow, wait for it to finish, then come back and click Use.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -139,6 +163,17 @@ struct VoiceProviderCard: View {
         case .region: return Binding(get: { settings.region(for: provider) }, set: { settings.setRegion($0, for: provider) })
         default: return .constant("")
         }
+    }
+
+    private func refreshAppleVoices() {
+        appleVoices = AVSpeechSynthesisVoice.speechVoices().sorted { ($0.language, $0.name) < ($1.language, $1.name) }
+    }
+
+    /// The best installed copy of a named voice: Premium over Enhanced over Default.
+    private func installedAppleVoice(_ name: String, language: String) -> AVSpeechSynthesisVoice? {
+        appleVoices
+            .filter { $0.name.hasPrefix(name) && $0.language.hasPrefix(language) }
+            .max { $0.quality.rawValue < $1.quality.rawValue }
     }
 
     private func refreshKeyState() {

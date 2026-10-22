@@ -6,9 +6,7 @@ struct VoiceSettings: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var controller: AnnouncementController
 
-    private let appleVoices = AVSpeechSynthesisVoice.speechVoices().sorted {
-        ($0.language, $0.name) < ($1.language, $1.name)
-    }
+    @State private var appleVoices: [AVSpeechSynthesisVoice] = []
 
     var body: some View {
         Form {
@@ -33,5 +31,8 @@ struct VoiceSettings: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear {
+            appleVoices = AVSpeechSynthesisVoice.speechVoices().sorted { ($0.language, $0.name) < ($1.language, $1.name) }
+        }
     }
 }
