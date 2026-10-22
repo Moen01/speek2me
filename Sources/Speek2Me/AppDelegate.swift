@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBar = StatusBarController(controller: controller, settings: settings, actions: .init(
             openSettings: { [weak self] in self?.showSettings() },
             openSessions: { [weak self] in self?.showSettings(tab: .sessions) },
+            openUpdates: { [weak self] in self?.showSettings(tab: .about) },
             openSetupGuide: { [weak self] in self?.showOnboarding() },
             openAbout: { [weak self] in self?.showAbout() }
         ))

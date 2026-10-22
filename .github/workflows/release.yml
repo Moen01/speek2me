@@ -1,0 +1,74 @@
+# Every push to main that changes more than docs is tested, built and published as a new
+# GitHub release, so the download links and the in-app update check always get the newest build.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Two quick pushes must not both pick the same next version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Speek2Me needs macOS 26 and Swift 6.2 (Xcode 26).
+    runs-on: macos-26
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Test
+        run: swift test
+
+      # The same certificate every release, so the Keychain items stay readable across updates.
+      - name: Signing certificate
+        env:
+          P12: ${{ secrets.SIGNING_CERT_P12 }}
+          P12_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          if [[ -z "$P12" || -z "$P12_PASSWORD" ]]; then
+            echo "::error::SIGNING_CERT_P12 and SIGNING_CERT_PASSWORD secrets are required"
+            exit 1
+          fi
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/signing.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          # By hash: codesign takes the untrusted self-signed identity only that way.
+          echo "SIGN_IDENTITY=$(security find-certificate -c "Speek2Me Signing" -Z "$KEYCHAIN" | awk '/SHA-1/ {print $3}')" >> "$GITHUB_ENV"
+
+      - name: Pick version
+        id: version
+        run: echo "version=$(scripts/next-version.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/package-release.sh
+
+      - name: Publish
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/Speek2Me.zip dist/Speek2Me.dmg dist/SHA256SUMS \
+            --title "Speek2Me $VERSION" \
+            --target "$GITHUB_SHA" \
+            --generate-notes

@@ -7,6 +7,7 @@ final class StatusBarController: NSObject {
     struct Actions {
         var openSettings: () -> Void
         var openSessions: () -> Void
+        var openUpdates: () -> Void
         var openSetupGuide: () -> Void
         var openAbout: () -> Void
     }
@@ -42,6 +43,7 @@ final class StatusBarController: NSObject {
         menu.addItem(repairItem)
         menu.addItem(menuItem(title: "Settings…", action: #selector(showSettings), key: ","))
         menu.addItem(menuItem(title: "Setup Guide…", action: #selector(showSetupGuide), key: ""))
+        menu.addItem(menuItem(title: "Check for Updates…", action: #selector(showUpdates), key: ""))
         menu.addItem(.separator())
         menu.addItem(menuItem(title: "About Speek2Me", action: #selector(showAbout), key: ""))
         menu.addItem(NSMenuItem(title: "Quit Speek2Me", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -82,5 +84,6 @@ final class StatusBarController: NSObject {
     @objc private func openSessions() { actions.openSessions() }
     @objc private func showSettings() { actions.openSettings() }
     @objc private func showSetupGuide() { actions.openSetupGuide() }
+    @objc private func showUpdates() { actions.openUpdates() }
     @objc private func showAbout() { actions.openAbout() }
 }

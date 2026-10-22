@@ -49,7 +49,9 @@ a newer event from the same session replaces one you have not heard yet.
 
 ## Install
 
-Requires macOS 26 or later on an Apple silicon Mac. Build from source for now:
+Requires macOS 26 or later on an Apple silicon Mac. Download **Speek2Me.zip** from the
+[latest release](https://github.com/Moen01/speek2me/releases/latest) (once the repository is
+public), or build from source:
 
 ```sh
 ./scripts/build-app.sh
@@ -82,6 +84,15 @@ test turn. Reopen it any time from the menu-bar icon with **Setup Guide…**.
 - With Claude off and Apple or Piper as the voice, nothing leaves this Mac.
 - Keys are stored in the macOS Keychain. The inbox files hold only the event text and are
   deleted as soon as they are read.
+
+## Updates
+
+Settings › About shows the installed version and checks GitHub for a newer release each time it
+opens; **Check for Updates…** in the menu goes there too. Update downloads the release zip,
+verifies it against the release's SHA256SUMS and the Speek2Me signing certificate, swaps the app
+bundle and relaunches. Every push to `main` that changes more than docs publishes a release
+through `.github/workflows/release.yml`, signed with the same certificate from the repository
+secrets `SIGNING_CERT_P12` and `SIGNING_CERT_PASSWORD`.
 
 ## Menu
 

@@ -39,12 +39,10 @@ struct SettingsView: View {
 }
 
 private struct AboutSettings: View {
-    private let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
-
     var body: some View {
         Form {
             Section {
-                LabeledContent("Version", value: version)
+                UpdateRow()
                 LabeledContent("Hook command", value: HookCommand.executableURL(bundleURL: Bundle.main.bundleURL).path)
                 LabeledContent("Inbox", value: Inbox.defaultDirectory.path)
                 Link("github.com/Moen01/speek2me", destination: URL(string: "https://github.com/Moen01/speek2me")!)
